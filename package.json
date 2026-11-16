@@ -1,0 +1,26 @@
+{
+  "name": "aether-cli",
+  "version": "2.0.0",
+  "description": "AETHER — Intelligent Terminal Operating Environment",
+  "main": "dist/index.js",
+  "bin": {
+    "aether": "./dist/index.js",
+    "luvsean": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^12.1.0",
+    "dotenv": "^18.0.10",
+    "node-fetch": "^2.7.0",
+    "openai": "^7.56.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/node-fetch": "^2.6.13",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,164 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# LUVSEAN — .gitignore
+# Node.js / TypeScript CLI project
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
+build/
+out/
+*.js.map
+*.d.ts.map
+
+
+# ── TypeScript cache ──────────────────────────────────────────────────────────
+*.tsbuildinfo
+.tscache/
+
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.*.local
+*.pem
+*.key
+*.cert
+
+
+# ── Luvsean runtime files ─────────────────────────────────────────────────────
+COFFIN.md
+
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+
+# ── Test coverage ─────────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+
+# ── Package manager locks (keep only the one you use) ─────────────────────────
+# If using npm  → keep package-lock.json, ignore the rest
+# If using yarn → keep yarn.lock, ignore the rest
+# If using pnpm → keep pnpm-lock.yaml, ignore the rest
+yarn.lock
+pnpm-lock.yaml
+# package-lock.json  ← uncomment if you prefer not to commit it
+
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.Trash-*
+.nfs*
+
+
+# ── Editor & IDE ──────────────────────────────────────────────────────────────
+# VS Code (keep .vscode/extensions.json and .vscode/launch.json if shared)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+
+# JetBrains (WebStorm, IntelliJ)
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+Session.vim
+.netrwhist
+
+# Emacs
+*#
+.#*
+\#*#
+
+
+# ── Temp & misc ───────────────────────────────────────────────────────────────
+tmp/
+temp/
+.tmp/
+.cache/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+
+
+# ── Optional tooling ──────────────────────────────────────────────────────────
+# ESLint cache
+.eslintcache
+
+# Prettier cache
+.prettiercache
+
+# Stylelint cache
+.stylelintcache
+
+# Parcel cache
+.parcel-cache/
+
+# Rollup cache
+.rollup.cache
+
+# Turbo
+.turbo/
+
+# Rush
+common/temp/
+
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+*.dockerignore
+
+
+# ── Diagnostic reports ────────────────────────────────────────────────────────
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
