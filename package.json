@@ -1,26 +1,52 @@
 {
   "name": "aether-cli",
-  "version": "2.0.0",
-  "description": "AETHER — Intelligent Terminal Operating Environment",
+  "version": "3.0.0",
+  "description": "AETHER \u2014 the haunted terminal. Seven rituals that resurrect context, exorcise zombie dependencies, hunt dead code, translate errors, enforce commit oaths and catch config drift.",
   "main": "dist/index.js",
   "bin": {
     "aether": "./dist/index.js",
     "luvsean": "./dist/index.js"
   },
-  "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js"
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "engines": {
+    "node": ">=18"
   },
+  "scripts": {
+    "build": "tsc && npm run build:web",
+    "dev": "tsc -w",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test test/cli.test.js test/pbt.test.js test/web.test.js",
+    "prepublishOnly": "npm run build",
+    "build:web": "esbuild src/web.ts --bundle --format=iife --global-name=AetherCore --outfile=docs/engine.js --minify --target=es2019 --legal-comments=none"
+  },
+  "keywords": [
+    "cli",
+    "developer-tools",
+    "kiro",
+    "kiroween",
+    "ai",
+    "git",
+    "context"
+  ],
+  "license": "MIT",
   "dependencies": {
-    "chalk": "^5.6.2",
+    "chalk": "^4.1.2",
     "commander": "^12.1.0",
-    "dotenv": "^18.0.10",
+    "dotenv": "^16.4.5",
     "node-fetch": "^2.7.0",
-    "openai": "^7.56.0"
+    "openai": "^4.77.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
-    "@types/node-fetch": "^2.6.13",
-    "typescript": "^5.9.3"
+    "@types/node": "^20.14.0",
+    "@types/node-fetch": "^2.6.11",
+    "esbuild": "^0.28.2",
+    "fast-check": "^4.10.3",
+    "typescript": "^5.6.0"
   }
 }

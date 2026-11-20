@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "aether": {
+      "command": "node",
+      "args": [
+        "dist/index.js",
+        "mcp"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "aether_whisper",
+        "aether_oath",
+        "aether_resurrect"
+      ]
+    }
+  }
+}

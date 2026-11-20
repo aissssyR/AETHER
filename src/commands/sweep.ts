@@ -1,226 +1,113 @@
 import { Command } from "commander";
-import chalk from "chalk";
 import * as fs from "fs";
 import * as path from "path";
-import { callAI } from "../services/ai";
+import { callAI, extractJson } from "../services/ai";
+import { collect } from "../lib/scan";
+import { analyzeFiles, USAGE_EXTS, type DeadItem } from "../core/sweep";
+import { theme, header, ok, warn, fail, note, step, rule, hasAI, type ExitCode } from "../lib/ui";
 
-// ─── Spooky ASCII banner ───────────────────────────────────────────────────────
-const SWEEP_BANNER = chalk.gray(`
-  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-  ░  🧹  GRAVEYARD DETECTIVE  🧹  ░
-  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-`);
+export { analyzeFiles, type DeadItem };
 
-// ─── System prompt ─────────────────────────────────────────────────────────────
-const SWEEP_SYSTEM_PROMPT =
-  "You are a Graveyard Detective. Look at this list of files/code snippets. " +
-  "Identify which ones look like \"dead code\" (unused functions, empty files, or deprecated variables). " +
-  "Return a spooky \"Graveyard Report\" listing the dead items and why they should be buried (deleted). " +
-  "Format your response as plain text with sections. " +
-  "Use '💀 DEAD:' to prefix each dead item and '⚰️  BURY IT:' to prefix each reason/suggestion.";
-
-// ─── File extensions we care about ─────────────────────────────────────────────
-const CODE_EXTENSIONS = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-  ".py", ".rb", ".go", ".rs", ".java", ".cs",
-  ".vue", ".svelte", ".css", ".scss", ".json",
-]);
-
-// ─── Directories to always skip ────────────────────────────────────────────────
-const SKIP_DIRS = new Set([
-  "node_modules", ".git", "dist", "build", "out",
-  ".next", ".nuxt", ".cache", "coverage",
-]);
-
-// ─── File scanner ──────────────────────────────────────────────────────────────
-
-interface FileInfo {
-  relativePath: string;
-  sizeBytes: number;
-  isEmpty: boolean;
-  snippet: string; // first ~300 chars of the file
+/** Reads the project from disk and runs the pure analysis. */
+export function analyze(root: string, scopeRel: string | null): { items: DeadItem[]; scanned: number } {
+  const files = collect(root, USAGE_EXTS);
+  let pkgJson: string | undefined;
+  try { pkgJson = fs.readFileSync(path.join(root, "package.json"), "utf-8"); } catch { /* none */ }
+  return analyzeFiles(files, scopeRel, { pkgJson, orphans: !scopeRel || pkgJson !== undefined });
 }
 
-/**
- * Reads a single file and returns a FileInfo summary.
- */
-function readFileInfo(filePath: string, cwd: string): FileInfo {
-  const relativePath = path.relative(cwd, filePath).replace(/\\/g, "/");
-  let content = "";
+// ─── Optional AI review ────────────────────────────────────────────────────────
+
+async function aiReview(root: string, items: DeadItem[]): Promise<void> {
+  const subset = items.filter((i) => i.kind !== "file").slice(0, 12);
+  if (!subset.length) return;
+  step("Asking the AI ghost to double-check for dynamic or framework usage…");
+  const blocks = subset.map((i) => {
+    let snippet = "";
+    try { snippet = fs.readFileSync(path.join(root, i.file), "utf-8").split("\n").slice(i.line - 1, i.line + 7).join("\n"); } catch { /* ignore */ }
+    return `### ${i.name} (${i.kind}) in ${i.file}:${i.line}\n${snippet}`;
+  }).join("\n\n");
   try {
-    content = fs.readFileSync(filePath, "utf-8");
-  } catch {
-    // unreadable file — treat as empty
-  }
-  return {
-    relativePath,
-    sizeBytes: Buffer.byteLength(content, "utf-8"),
-    isEmpty: content.trim().length === 0,
-    snippet: content.slice(0, 300).replace(/\r\n/g, "\n"),
-  };
-}
-
-/**
- * Recursively collects all code files under `dir`, skipping ignored folders.
- * Returns at most `limit` files so we don't flood the AI with too much context.
- */
-function collectFiles(dir: string, limit = 40): FileInfo[] {
-  const results: FileInfo[] = [];
-
-  function walk(current: string): void {
-    if (results.length >= limit) return;
-
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      if (results.length >= limit) break;
-
-      const fullPath = path.join(current, entry.name);
-
-      if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) walk(fullPath);
-      } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        if (CODE_EXTENSIONS.has(ext)) {
-          results.push(readFileInfo(fullPath, dir));
-        }
-      }
-    }
-  }
-
-  walk(dir);
-  return results;
-}
-
-// ─── Local fallback (no API key) ──────────────────────────────────────────────
-
-function localSweep(files: FileInfo[]): void {
-  const empty = files.filter((f) => f.isEmpty);
-  const tiny = files.filter((f) => !f.isEmpty && f.sizeBytes < 50);
-
-  if (empty.length === 0 && tiny.length === 0) {
-    console.log(chalk.gray("   No obviously dead files found (empty or near-empty)."));
-    console.log(chalk.gray("   Add your NEBIUS_API_KEY to .env for a full AI deep-dive.\n"));
-    return;
-  }
-
-  if (empty.length > 0) {
-    console.log(chalk.gray.bold("💀 EMPTY FILES (prime burial candidates):"));
-    empty.forEach((f) => {
-      console.log(chalk.gray(`   💀 DEAD: ${f.relativePath}`));
-      console.log(chalk.red(`   ⚰️  BURY IT: This file is completely empty — it serves no purpose.\n`));
+    const raw = await callAI(
+      "You review dead-code candidates found by static analysis (0 textual references). For each, decide if it is truly safe to delete " +
+        "or risky (called dynamically, by a framework convention, reflection, a public API, or from another repo). " +
+        'Reply RAW JSON only: {"reviews":[{"name":"…","verdict":"safe|risky","reason":"max 15 words"}]}',
+      blocks, 0.2);
+    const obj = raw ? extractJson<{ reviews?: { name: string; verdict: string; reason: string }[] }>(raw) : null;
+    if (!obj?.reviews?.length) return;
+    console.log();
+    console.log(theme.brand.bold("  AI second opinion"));
+    obj.reviews.forEach((r) => {
+      const safe = String(r.verdict).toLowerCase() === "safe";
+      console.log(`  ${safe ? theme.ok("✔ safe ") : theme.warn("▲ risky")} ${theme.text(r.name)} ${theme.dim("— " + r.reason)}`);
     });
-  }
-
-  if (tiny.length > 0) {
-    console.log(chalk.gray.bold("💀 SUSPICIOUSLY TINY FILES:"));
-    tiny.forEach((f) => {
-      console.log(chalk.gray(`   💀 DEAD: ${f.relativePath} (${f.sizeBytes} bytes)`));
-      console.log(chalk.red(`   ⚰️  BURY IT: Under 50 bytes — likely a stub or forgotten placeholder.\n`));
-    });
+  } catch (err) {
+    warn(`AI review unavailable (${err instanceof Error ? err.message : String(err)}).`);
   }
 }
 
-// ─── Report printer ────────────────────────────────────────────────────────────
+// ─── Command ───────────────────────────────────────────────────────────────────
 
-function printReport(report: string): void {
-  const lines = report.split("\n");
-  for (const line of lines) {
-    if (line.startsWith("💀 DEAD:") || line.includes("DEAD:")) {
-      console.log(chalk.gray(`   ${line.trim()}`));
-    } else if (line.startsWith("⚰️") || line.includes("BURY IT:")) {
-      console.log(chalk.red(`   ${line.trim()}`));
-    } else if (line.trim()) {
-      console.log(chalk.gray.dim(`   ${line.trim()}`));
-    } else {
-      console.log();
-    }
+export interface SweepOptions { json?: boolean; ai?: boolean; all?: boolean; failOnDead?: boolean }
+
+export async function runSweep(target: string | undefined, opts: SweepOptions = {}): Promise<ExitCode> {
+  const root = process.cwd();
+  const abs = target ? path.resolve(root, target) : root;
+  if (!fs.existsSync(abs)) { fail(`Cannot access: ${abs}`); return 1; }
+  const rel = path.relative(root, abs).replace(/\\/g, "/");
+  const scope = rel && rel !== "" ? rel : null;
+
+  const { items, scanned } = analyze(root, scope);
+
+  if (opts.json) {
+    console.log(JSON.stringify({ scanned, dead: items }, null, 2));
+    return opts.failOnDead && items.some((i) => i.confidence === "high") ? 1 : 0;
   }
-}
 
-// ─── Command definition ────────────────────────────────────────────────────────
+  header("🧹", "DEADCODE HUNTER", "The Graveyard Detective traces every call", theme.accent);
+  note(`Scanned ${scanned} files · tracing function/class references across the whole project`);
+  console.log();
+
+  if (scanned === 0) { warn("No source files found here."); return 0; }
+  if (items.length === 0) {
+    ok(theme.ok.bold("The graveyard is empty.") + theme.dim(" No unreferenced functions, classes or orphan files found."));
+    console.log();
+    return 0;
+  }
+
+  const limit = opts.all ? items.length : 40;
+  let lastFile = "";
+  items.slice(0, limit).forEach((i) => {
+    if (i.file !== lastFile) { console.log(theme.info.bold(`  ${i.file}`)); lastFile = i.file; }
+    const tag = i.confidence === "high" ? theme.bad("[high]  ") : theme.warn("[medium]");
+    const label = i.kind === "file" ? "orphan file" : `${i.kind} ${theme.text.bold(i.name + (i.kind === "function" || i.kind === "method" ? "()" : ""))}`;
+    console.log(`   ${tag} ${theme.dim(`L${i.line}`.padEnd(6))} ${label}`);
+    console.log(theme.dim(`            ${i.why}`));
+  });
+  if (items.length > limit) note(`… and ${items.length - limit} more (use --all)`);
+
+  const high = items.filter((i) => i.confidence === "high").length;
+  console.log();
+  rule();
+  console.log(`  ${theme.bad.bold(String(high))} high-confidence · ${theme.warn.bold(String(items.length - high))} medium-confidence candidates`);
+  note("high = not exported and never referenced → safe to delete. medium = exported/orphan → verify nothing outside this repo uses it.");
+  note("Static analysis is textual: dynamic calls (obj[name]()), reflection and string-based routing may hide usages.");
+
+  if (opts.ai) {
+    if (hasAI()) await aiReview(root, items);
+    else warn("--ai needs NEBIUS_API_KEY in .env");
+  }
+  console.log();
+  return opts.failOnDead && high > 0 ? 1 : 0;
+}
 
 export const sweepCommand = new Command("sweep")
-  .description("🧹 Scan for dead code — unused files, empty stubs, and forgotten functions")
-  .argument("[target]", "File or directory to scan (defaults to current directory)")
-  .action(async (target: string | undefined) => {
-    const cwd = process.cwd();
-    const scanPath = target ? path.resolve(cwd, target) : cwd;
-
-    console.log(SWEEP_BANNER);
-
-    // ── Determine if we're scanning a single file or a whole directory ──────────
-    let files: FileInfo[] = [];
-
-    try {
-      const stat = fs.statSync(scanPath);
-      if (stat.isFile()) {
-        files = [readFileInfo(scanPath, cwd)];
-        console.log(chalk.gray(`🔍 Scanning file: ${path.relative(cwd, scanPath) || scanPath}\n`));
-      } else {
-        files = collectFiles(scanPath);
-        console.log(chalk.gray(`🔍 Scanning ${files.length} code file(s) in: ${path.relative(cwd, scanPath) || "."}\n`));
-      }
-    } catch {
-      console.log(chalk.red(`❌ Cannot access: ${scanPath}\n`));
-      process.exit(1);
-    }
-
-    if (files.length === 0) {
-      console.log(chalk.gray("   No code files found to analyze.\n"));
-      process.exit(0);
-    }
-
-    // ── Build the context string for the AI ────────────────────────────────────
-    const context = files
-      .map((f) => {
-        const header = `### ${f.relativePath} (${f.sizeBytes} bytes)${f.isEmpty ? " [EMPTY]" : ""}`;
-        const body = f.isEmpty ? "(empty file)" : f.snippet + (f.sizeBytes > 300 ? "\n... [truncated]" : "");
-        return `${header}\n${body}`;
-      })
-      .join("\n\n");
-
-    const hasApiKey =
-      process.env.NEBIUS_API_KEY &&
-      process.env.NEBIUS_API_KEY !== "your_nebius_api_key_here";
-
-    console.log(chalk.gray("─".repeat(52)));
-
-    if (hasApiKey) {
-      // ── AI path ──────────────────────────────────────────────────────────────
-      console.log(chalk.gray("\n👻 The Graveyard Detective is inspecting the corpses...\n"));
-      try {
-        const report = await callAI(SWEEP_SYSTEM_PROMPT, context, 0.5);
-
-        if (report) {
-          console.log(chalk.gray.bold("\n📋 GRAVEYARD REPORT:\n"));
-          printReport(report);
-        } else {
-          console.log(chalk.yellow("⚠️  The detective found nothing to report.\n"));
-          localSweep(files);
-        }
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        console.log(chalk.yellow(`⚠️  The ghost went silent (${reason}). Using local scan.\n`));
-        localSweep(files);
-      }
-    } else {
-      // ── Local fallback path ───────────────────────────────────────────────────
-      console.log(
-        chalk.gray("💡 No NEBIUS_API_KEY — running local heuristic scan.\n") +
-        chalk.gray("   Add your key to .env for a full AI-powered Graveyard Report.\n")
-      );
-      localSweep(files);
-    }
-
-    console.log();
-    console.log(chalk.gray("─".repeat(52)));
-    console.log(chalk.gray.dim("\n🪦 The sweep is complete. Bury the dead and let the living code breathe.\n"));
-
-    process.exit(0);
+  .description("🧹 Find dead code: unreferenced functions, classes and orphan files (JS/TS/Python/PHP)")
+  .argument("[target]", "file or directory to report on (the whole project is still used to count references)")
+  .option("--json", "machine-readable output")
+  .option("--ai", "ask the AI for a second opinion on risky candidates")
+  .option("--all", "show every finding (default: first 40)")
+  .option("--fail-on-dead", "exit 1 if high-confidence dead code exists (CI)")
+  .action(async (target: string | undefined, o: SweepOptions) => {
+    process.exitCode = await runSweep(target, o);
   });

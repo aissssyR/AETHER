@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Seal the coffin",
+  "description": "Freeze the current work context so it can be resurrected tomorrow.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Summarise in one sentence what we were working on, then call the aether_coffin MCP tool with that sentence as the note. Reply with the next steps it returns."
+  }
+}

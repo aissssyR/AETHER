@@ -1,238 +1,212 @@
 import { Command } from "commander";
-import chalk from "chalk";
-import { execSync } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+import * as readline from "readline";
+import { spawnSync } from "child_process";
 import { suggestCommitMessages } from "../services/ai";
+import * as G from "../lib/git";
+import { theme, header, ok, warn, fail, note, step, rule, hasAI, noAIHint, type ExitCode } from "../lib/ui";
 
-// ─── Spooky ASCII art ──────────────────────────────────────────────────────────
-const SKULL_ART = chalk.red(`
-    ░░░░░░░░░░░░░░░░░░░
-    ░   ██████████   ░
-    ░  ████  ████  ░
-    ░  ████  ████  ░
-    ░    ████████    ░
-    ░  ██  ████  ██  ░
-    ░░░░░░░░░░░░░░░░░░░
-`);
+import { validateCommit, suggestFromFiles, type Verdict } from "../core/oath";
+export { validateCommit, suggestFromFiles, type Verdict };
 
-const GHOST_ACCEPT = chalk.green(`
-    ░░░░░░░░░░░░░░░
-    ░    .-.    ░
-    ░   (^ ^)   ░
-    ░   / | \\   ░
-    ░░░░░░░░░░░░░░░
-`);
+// ─── Local suggestions (diff-aware, no AI needed) ──────────────────────────────
 
-// ─── Lazy word detection ────────────────────────────────────────────────────────
-
-/**
- * Words that signal a lazy commit message.
- * Matched as whole words (case-insensitive) to avoid false positives
- * like "bugfix" or "update-schema" being blocked.
- */
-const LAZY_WORDS = [
-  "fix",
-  "bug",
-  "update",
-  "wip",
-  "stuff",
-  "changes",
-  "misc",
-  "temp",
-  "test",
-  "asdf",
-  "lol",
-  "idk",
-];
-
-interface QualityCheck {
-  passed: boolean;
-  reason: string;
+function localSuggestions(weak: string): string[] {
+  return suggestFromFiles(weak, G.isRepo() ? G.changedFiles() : []);
 }
 
-function checkCommitQuality(message: string): QualityCheck {
-  const trimmed = message.trim();
-
-  // Rule 1: too short
-  if (trimmed.length < 10) {
-    return {
-      passed: false,
-      reason: `Message is only ${trimmed.length} character${trimmed.length !== 1 ? "s" : ""} long — the spirits demand at least 10.`,
-    };
-  }
-
-  // Rule 2: lazy words (whole-word match, case-insensitive)
-  const foundLazy = LAZY_WORDS.find((word) =>
-    new RegExp(`\\b${word}\\b`, "i").test(trimmed)
-  );
-  if (foundLazy) {
-    return {
-      passed: false,
-      reason: `Contains the weak word "${foundLazy}" — this oath carries no power.`,
-    };
-  }
-
-  // Rule 3: all lowercase single word (e.g. "working")
-  if (/^\w+$/.test(trimmed)) {
-    return {
-      passed: false,
-      reason: `A single word is not an oath — be more specific about what changed.`,
-    };
-  }
-
-  return { passed: true, reason: "" };
+async function getSuggestions(weak: string): Promise<string[]> {
+  if (hasAI()) {
+    step("Summoning the AI ghost for better offerings…");
+    try {
+      const diff = G.isRepo() ? G.diffHead() : "";
+      const ai = await suggestCommitMessages(weak, diff);
+      if (ai) return ai;
+    } catch (err) {
+      warn(`AI unavailable (${err instanceof Error ? err.message : String(err)}) — using local suggestions.`);
+    }
+  } else noAIHint("suggestions derived from your changed files");
+  return localSuggestions(weak);
 }
 
-// ─── Git diff helper (reused from coffin pattern) ──────────────────────────────
+// ─── Interactive prompt ────────────────────────────────────────────────────────
 
-function getCurrentDiff(): string {
+const CURSE = "Cursed-By: aether (weak oath — marked as technical debt)";
+
+function ask(q: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((res) => rl.question(q, (a) => { rl.close(); res(a.trim().toLowerCase()); }));
+}
+
+type Choice = { kind: "pick"; message: string } | { kind: "force" } | { kind: "quit" };
+
+async function choose(suggestions: string[]): Promise<Choice> {
+  const a = await ask(theme.dim(`\n  Pick [1-${suggestions.length}], ${theme.warn("f")}orce (adds a curse), or ${theme.bad("q")}uit › `));
+  const n = Number(a);
+  if (n >= 1 && n <= suggestions.length) return { kind: "pick", message: suggestions[n - 1] };
+  if (a === "f" || a === "force") return { kind: "force" };
+  return { kind: "quit" };
+}
+
+function printRejection(message: string, reason: string): void {
+  header("🩸", "THE OATH", "Weak oaths are rejected by the spirits", theme.bad);
+  console.log(theme.bad.bold("  👻 The Code Spirits are displeased."));
+  console.log(theme.bad(`     "${message}" is not an acceptable sacrifice.`));
+  console.log(theme.dim(`     Reason: ${reason}`));
+  console.log();
+}
+
+function printSuggestions(list: string[]): void {
+  list.forEach((s, i) => console.log(`  ${theme.brand.bold(`[${i + 1}]`)} ${theme.text(s)}`));
+}
+
+function commit(message: string, curse: boolean): ExitCode {
+  const args = ["commit", "-m", message];
+  // A forced commit was already adjudicated here — skip our own commit-msg hook so it isn't judged twice.
+  if (curse) args.push("-m", CURSE, "--no-verify");
+  const r = spawnSync("git", args, { encoding: "utf-8" });
+  if (r.status === 0) {
+    ok(theme.ok.bold("Committed.") + theme.dim("  " + (r.stdout.split("\n")[0] ?? "")));
+    return 0;
+  }
+  const out = `${r.stdout}${r.stderr}`;
+  if (/nothing (added )?to commit|no changes added/i.test(out)) warn("Nothing staged. Run `git add <files>` first.");
+  else if (/not a git repository/i.test(out)) warn("Not a git repository — nothing was committed.");
+  else fail(out.trim().split("\n")[0] || "git commit failed");
+  return 1;
+}
+
+// ─── Core: manual mode ─────────────────────────────────────────────────────────
+
+export interface OathOptions {
+  commit?: boolean;
+  strict?: boolean;
+  force?: boolean;
+}
+
+export async function runOath(message: string, opts: OathOptions = {}): Promise<ExitCode> {
+  const verdict = validateCommit(message, opts.strict);
+  const doCommit = opts.commit !== false;
+
+  if (verdict.passed) {
+    header("🩸", "THE OATH", "The spirits weigh your words", theme.ok);
+    ok(theme.ok.bold("The spirits accept your oath.") + theme.dim(`  "${message}"`));
+    return doCommit ? commit(message, false) : 0;
+  }
+
+  if (opts.force) {
+    printRejection(message, verdict.reason);
+    warn("Forced. The spirits will remember this.");
+    return doCommit ? commit(message, true) : 0;
+  }
+
+  printRejection(message, verdict.reason);
+  rule();
+  const suggestions = await getSuggestions(message);
+  console.log();
+  console.log(theme.brand.bold("  The spirits offer these instead:\n"));
+  printSuggestions(suggestions);
+
+  if (process.stdin.isTTY && doCommit) {
+    const c = await choose(suggestions);
+    if (c.kind === "pick") return commit(c.message, false);
+    if (c.kind === "force") return commit(message, true);
+  } else {
+    console.log();
+    note('Re-run with a better message, or:  aether oath "<message>" --force');
+  }
+  console.log();
+  return 1;
+}
+
+// ─── Core: git hook mode (commit-msg) ──────────────────────────────────────────
+
+async function runHook(msgFile: string, strict: boolean): Promise<ExitCode> {
+  let raw: string;
   try {
-    const diff =
-      execSync("git diff HEAD", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim() ||
-      execSync("git diff --cached", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-    return diff;
+    raw = fs.readFileSync(msgFile, "utf-8");
   } catch {
-    return "";
+    return 0; // never block a commit because we can't read the file
   }
+  const lines = raw.split("\n");
+  const idx = lines.findIndex((l) => l.trim() && !l.startsWith("#"));
+  if (idx === -1) return 0;
+  const message = lines[idx].trim();
+  const verdict = validateCommit(message, strict);
+  if (verdict.passed) return 0;
+
+  printRejection(message, verdict.reason);
+  const suggestions = await getSuggestions(message);
+  console.log();
+  printSuggestions(suggestions);
+
+  if (!process.stdin.isTTY) {
+    console.log();
+    note("Commit blocked. Amend the message (or `git commit --no-verify` to bypass).");
+    return 1;
+  }
+  const c = await choose(suggestions);
+  if (c.kind === "quit") return 1;
+  if (c.kind === "pick") lines[idx] = c.message;
+  else lines.splice(idx + 1, 0, "", CURSE);
+  fs.writeFileSync(msgFile, lines.join("\n"));
+  return 0;
 }
 
-// ─── Fallback commit suggestions (no API key) ──────────────────────────────────
+// ─── Hook installer ────────────────────────────────────────────────────────────
 
-function localSuggestions(weakMessage: string): string[] {
-  const slug = weakMessage.toLowerCase().replace(/\s+/g, "-").slice(0, 40);
-  return [
-    `feat: implement ${slug} with proper validation`,
-    `refactor: restructure ${slug} for clarity and maintainability`,
-    `fix: resolve edge case in ${slug} and add error handling`,
-  ];
+const MARKER = "# aether-oath-hook";
+
+function hookPath(): string | null {
+  const p = G.git(["rev-parse", "--git-path", "hooks/commit-msg"]);
+  return p ? path.resolve(p) : null;
 }
 
-// ─── Command definition ─────────────────────────────────────────────────────────
+function installHook(): ExitCode {
+  header("🪝", "OATH HOOK", "Guarding your git history", theme.accent);
+  const target = hookPath();
+  if (!target) { fail("Not inside a git repository."); return 1; }
+  if (fs.existsSync(target) && !fs.readFileSync(target, "utf-8").includes(MARKER)) {
+    fail(`A different commit-msg hook already exists:\n     ${target}`);
+    note("Back it up or merge manually, then re-run.");
+    return 1;
+  }
+  const cli = fs.realpathSync(process.argv[1]).replace(/\\/g, "/");
+  const node = process.execPath.replace(/\\/g, "/");
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, `#!/bin/sh\n${MARKER}\nexec "${node}" "${cli}" oath --hook "$1"\n`, { mode: 0o755 });
+  ok(`Installed ${theme.dim(target)}`);
+  note('Try it:  git commit --allow-empty -m "fix bug"');
+  console.log();
+  return 0;
+}
+
+function uninstallHook(): ExitCode {
+  const target = hookPath();
+  if (target && fs.existsSync(target) && fs.readFileSync(target, "utf-8").includes(MARKER)) {
+    fs.unlinkSync(target);
+    ok("Oath hook removed.");
+    return 0;
+  }
+  warn("No AETHER hook found.");
+  return 0;
+}
 
 export const oathCommand = new Command("oath")
-  .description("🩸 Validate your commit message — weak oaths are rejected by the spirits")
-  .argument("<message>", "Your proposed commit message")
-  .action(async (message: string) => {
-    const check = checkCommitQuality(message);
-
-    if (!check.passed) {
-      // ── BLOCKED path ────────────────────────────────────────────────────────
-      console.log(SKULL_ART);
-      console.log(
-        chalk.red.bold(
-          `👻 The Code Spirits are displeased.\n`
-        )
-      );
-      console.log(
-        chalk.red(
-          `   "${message}" is a weak oath.\n`
-        )
-      );
-      console.log(chalk.red.dim(`   Reason: ${check.reason}\n`));
-      console.log(
-        chalk.red("   The spirits demand a better sacrifice.\n")
-      );
-      console.log(chalk.gray("─".repeat(52)) + "\n");
-
-      // ── Suggest better messages ──────────────────────────────────────────────
-      const diff = getCurrentDiff();
-      const hasApiKey =
-        process.env.NEBIUS_API_KEY &&
-        process.env.NEBIUS_API_KEY !== "your_nebius_api_key_here";
-
-      let suggestions: string[];
-
-      if (hasApiKey) {
-        console.log(chalk.magenta("🤖 Summoning the AI ghost for better offerings...\n"));
-        try {
-          const aiResult = await suggestCommitMessages(message, diff);
-          suggestions = aiResult?.messages ?? localSuggestions(message);
-          if (aiResult) {
-            console.log(chalk.magenta("✨ The spirits have conjured these alternatives:\n"));
-          }
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          console.log(chalk.yellow(`⚠️  AI ghost went silent (${reason}). Using local suggestions.\n`));
-          suggestions = localSuggestions(message);
-        }
-      } else {
-        console.log(
-          chalk.gray("💡 No NEBIUS_API_KEY — using local suggestions.\n") +
-          chalk.gray("   Add your key to .env for AI-generated alternatives.\n\n")
-        );
-        suggestions = localSuggestions(message);
-      }
-
-      // ── Print the 3 suggestions ──────────────────────────────────────────────
-      suggestions.forEach((suggestion, i) => {
-        const label = chalk.magenta.bold(`  [${i + 1}]`);
-        console.log(`${label} ${chalk.white(suggestion)}`);
-      });
-
-      console.log();
-      console.log(chalk.gray("─".repeat(52)));
-      console.log(
-        chalk.gray(
-          "\n💀 Copy one of the above, then run:\n" +
-          chalk.white(`   git commit -m "<chosen message>"\n`) +
-          chalk.gray("   ...or re-run: ") +
-          chalk.white(`luvsean oath "<chosen message>"\n`)
-        )
-      );
-
-      // Exit with non-zero so this can be used as a git hook later.
-      process.exit(1);
-
-    } else {
-      // ── PASSED path ─────────────────────────────────────────────────────────
-      console.log(GHOST_ACCEPT);
-      console.log(
-        chalk.green.bold("👻 The spirits accept your oath.\n")
-      );
-      console.log(
-        chalk.green(`   "${message}"\n`)
-      );
-      console.log(
-        chalk.green("   Committing to the void...\n")
-      );
-      console.log(chalk.gray("─".repeat(52)));
-
-      // ── Optionally run the actual git commit ─────────────────────────────────
-      try {
-        const result = execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-        });
-        console.log(chalk.green("\n✅ Committed!\n"));
-        console.log(chalk.gray(result.trim()));
-      } catch (err) {
-        // No staged changes, or not a git repo — that's fine, the validation passed
-        const output = err instanceof Error && "stderr" in err
-          ? (err as NodeJS.ErrnoException & { stderr: string }).stderr
-          : "";
-        if (output.includes("nothing to commit") || output.includes("no changes added")) {
-          console.log(
-            chalk.yellow(
-              "\n⚠️  Nothing staged to commit. Run `git add <files>` first.\n"
-            )
-          );
-        } else if (output.includes("not a git repository")) {
-          console.log(
-            chalk.yellow(
-              "\n⚠️  Not a git repository. The oath was accepted but nothing was committed.\n"
-            )
-          );
-        } else {
-          console.log(
-            chalk.yellow("\n⚠️  Message passed, but git commit failed:\n") +
-            chalk.gray(`   ${output || String(err)}\n`)
-          );
-        }
-      }
-
-      console.log(chalk.gray("─".repeat(52)));
-      console.log(chalk.green.bold("\n🌑 The ritual is complete.\n"));
-
-      // Same reason as whisper: explicit exit after all async work is done.
-      process.exit(0);
-    }
+  .description("🩸 Judge a commit message; weak oaths are rejected (also a git hook)")
+  .argument("[message...]", "proposed commit message")
+  .option("--no-commit", "validate only, do not run git commit")
+  .option("--strict", "require Conventional Commits format")
+  .option("-f, --force", "commit a weak message anyway (adds a curse trailer)")
+  .option("--install-hook", "install a commit-msg hook in this repo")
+  .option("--uninstall-hook", "remove the hook")
+  .option("--hook <file>", "internal: run as a commit-msg hook")
+  .action(async (parts: string[], o: OathOptions & { installHook?: boolean; uninstallHook?: boolean; hook?: string }) => {
+    if (o.installHook) { process.exitCode = installHook(); return; }
+    if (o.uninstallHook) { process.exitCode = uninstallHook(); return; }
+    if (o.hook) { process.exitCode = await runHook(o.hook, !!o.strict); return; }
+    const message = parts.join(" ").trim();
+    if (!message) { warn('Usage: aether oath "<commit message>"'); process.exitCode = 1; return; }
+    process.exitCode = await runOath(message, o);
   });

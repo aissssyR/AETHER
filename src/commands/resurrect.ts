@@ -1,169 +1,117 @@
 import { Command } from "commander";
-import chalk from "chalk";
 import * as fs from "fs";
 import * as path from "path";
+import { spawnSync } from "child_process";
+import * as G from "../lib/git";
+import { theme, header, ok, warn, fail, note, rule, timeAgo, type ExitCode } from "../lib/ui";
+import { COFFIN_JSON, type CoffinData } from "./coffin";
 
-// ─── Spooky ASCII art ──────────────────────────────────────────────────────────
-const GHOST_ART = chalk.white(`
-        .-.
-       (o o)   boo!
-       | O |
-       '~~~'
-`);
-
-const TOMBSTONE_ART = chalk.gray(`
-       _______
-      |       |
-      | R.I.P |
-      | ~dev~ |
-      |_______|
-      |       |
- _____|       |_____
-`);
-
-const RESURRECT_BANNER = chalk.red(`
-  ╔══════════════════════════════════════╗
-  ║   💀  THE DEAD HAVE RISEN  💀        ║
-  ║      Your context awakens...         ║
-  ╚══════════════════════════════════════╝
-`);
-
-// ─── Content renderer ──────────────────────────────────────────────────────────
-
-/**
- * AI INTEGRATION POINT — Resurrect Renderer
- *
- * Currently reads COFFIN.md and renders it with spooky Chalk formatting.
- *
- * FUTURE UPGRADE: Before printing, send the COFFIN.md content to an LLM:
- *   1. Read COFFIN.md content (already done below)
- *   2. POST to OpenAI/Claude: "Based on this dev context, give a 3-sentence
- *      motivational briefing on what to tackle first today."
- *   3. Print the AI's response as a "Spirit Message" section above the raw content.
- */
-function renderCoffinContent(content: string): void {
-  const lines = content.split("\n");
-
-  lines.forEach((line) => {
-    // ── Headings ────────────────────────────────────────────────────────────
-    if (line.startsWith("# ")) {
-      console.log(chalk.red.bold(line));
-
-    } else if (line.startsWith("## ")) {
-      console.log("\n" + chalk.magenta.bold(line));
-
-    // ── Block quotes (spooky whispers) ──────────────────────────────────────
-    } else if (line.startsWith("> ")) {
-      console.log(chalk.gray.italic(line));
-
-    // ── Numbered list items (next steps) → highlight the number in green ───
-    } else if (/^\d+\.\s/.test(line)) {
-      const match = line.match(/^(\d+\.\s)(.*)/);
-      if (match) {
-        process.stdout.write(chalk.green.bold(match[1]));
-        console.log(chalk.white(match[2]));
-      } else {
-        console.log(chalk.white(line));
-      }
-
-    // ── Bullet list items ───────────────────────────────────────────────────
-    } else if (line.startsWith("- ")) {
-      // File names inside backticks → cyan; rest → gray
-      const formatted = line.replace(/`([^`]+)`/g, chalk.cyan("`$1`"));
-      console.log(chalk.gray(formatted));
-
-    // ── Code fences ─────────────────────────────────────────────────────────
-    } else if (line.startsWith("```")) {
-      console.log(chalk.gray.dim(line));
-
-    // ── Diff lines inside a code fence ──────────────────────────────────────
-    } else if (line.startsWith("+") && !line.startsWith("+++")) {
-      console.log(chalk.green(line));
-
-    } else if (line.startsWith("-") && !line.startsWith("---")) {
-      console.log(chalk.red(line));
-
-    } else if (line.startsWith("@@")) {
-      console.log(chalk.cyan(line));
-
-    // ── Horizontal rules ────────────────────────────────────────────────────
-    } else if (line.startsWith("---")) {
-      console.log(chalk.gray.dim("─".repeat(50)));
-
-    // ── Italic/bold markers ─────────────────────────────────────────────────
-    } else if (line.startsWith("*") || line.startsWith("_")) {
-      console.log(chalk.gray.italic(line));
-
-    // ── Everything else ─────────────────────────────────────────────────────
-    } else {
-      console.log(chalk.white(line));
-    }
-  });
+function loadCoffin(cwd: string): CoffinData | null {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(cwd, COFFIN_JSON), "utf-8")) as CoffinData;
+  } catch {
+    return null;
+  }
 }
 
-// ─── Command definition ─────────────────────────────────────────────────────────
+/** Opens a file at a line in the user's editor (VS Code family first). */
+function openInEditor(cwd: string, file: string, line?: number): boolean {
+  const abs = path.join(cwd, file);
+  if (!fs.existsSync(abs)) return false;
+  const win = process.platform === "win32";
+  const candidates: [string, string[]][] = [
+    ["code", ["-g", `${abs}:${line ?? 1}`]],
+    ["kiro", ["-g", `${abs}:${line ?? 1}`]],
+  ];
+  if (process.env.EDITOR) candidates.push([process.env.EDITOR, line ? [`+${line}`, abs] : [abs]]);
+  for (const [bin, args] of candidates) {
+    const r = spawnSync(bin, args, { stdio: "ignore", shell: win });
+    if (!r.error && r.status === 0) return true;
+  }
+  return false;
+}
+
+export interface ResurrectOptions {
+  open?: boolean;
+  apply?: boolean;
+}
+
+export async function runResurrect(opts: ResurrectOptions = {}): Promise<ExitCode> {
+  const cwd = process.cwd();
+  header("💀", "RESURRECTION", "The dead have risen — here is where you stopped", theme.bad);
+
+  const data = loadCoffin(cwd);
+  if (!data) {
+    const md = path.join(cwd, "COFFIN.md");
+    if (fs.existsSync(md)) {
+      warn("Only a plain COFFIN.md exists (no structured snapshot). Showing it as-is:\n");
+      console.log(theme.dim(fs.readFileSync(md, "utf-8")));
+      return 0;
+    }
+    fail("No coffin found in this directory.");
+    note('Seal one first:  aether coffin "what you were doing"');
+    return 1;
+  }
+
+  const sealed = new Date(data.sealedAt);
+  console.log(theme.text.bold(`  Good morning. Sealed ${timeAgo(sealed)}`) + theme.dim(`  (${sealed.toLocaleString()})`));
+  console.log();
+  console.log(theme.dim("  Last words  ") + theme.text(`"${data.note}"`));
+  console.log();
+  console.log(theme.brand.bold("  Where you stopped"));
+  console.log("  " + data.summary.replace(/`/g, ""));
+  console.log();
+  console.log(theme.ok.bold("  Do this next"));
+  data.nextSteps.forEach((s, i) => console.log(`  ${theme.ok(String(i + 1) + ".")} ${s.replace(/`/g, "")}`));
+
+  if (data.files.length) {
+    console.log();
+    console.log(theme.info.bold("  Files in flight"));
+    data.files.slice(0, 8).forEach((f) => console.log(`  ${theme.dim("•")} ${f.file}${f.line ? theme.dim(":" + f.line) : ""} ${theme.dim("— " + f.label)}`));
+  }
+  if (data.resume.length) {
+    console.log();
+    console.log(theme.accent.bold("  Resume with"));
+    data.resume.forEach((c) => console.log(`  ${theme.dim("$")} ${c}`));
+  }
+
+  // Drift check: has the repo moved since sealing?
+  if (data.isGitRepo && G.isRepo(cwd)) {
+    const branch = G.git(["rev-parse", "--abbrev-ref", "HEAD"]);
+    const head = G.git(["rev-parse", "HEAD"]);
+    console.log();
+    if (branch && data.branch && branch !== data.branch) warn(`Branch changed: sealed on ${data.branch}, you are on ${branch}.`);
+    if (head && data.head && head !== data.head) warn("HEAD moved since sealing (new commits, pull or rebase).");
+  }
+
+  if (opts.open) {
+    console.log();
+    let opened = 0;
+    for (const f of data.files.filter((x) => x.status !== "D").slice(0, 6)) if (openInEditor(cwd, f.file, f.line)) opened++;
+    if (opened) ok(`Reopened ${opened} file(s) at your last-edit lines.`);
+    else warn("Could not launch an editor. Install the `code` CLI or set $EDITOR.");
+  }
+
+  if (opts.apply) {
+    console.log();
+    if (!data.stash) warn("This coffin has no stash snapshot to restore.");
+    else if (!G.isRepo(cwd)) warn("Not a git repository.");
+    else if (G.changedFiles().length) warn("Working tree is not clean — refusing to overwrite your current changes.");
+    else if (G.git(["stash", "apply", data.stash]) === null) fail("Could not apply the stash (it may have been dropped or conflicts).");
+    else ok(`Restored your uncommitted changes from stash ${data.stash.slice(0, 8)}.`);
+  }
+
+  console.log();
+  rule();
+  note("Now go build something hauntingly great.");
+  console.log();
+  return 0;
+}
 
 export const resurrectCommand = new Command("resurrect")
-  .description("💀 Rise from the dead — read your saved COFFIN.md context")
-  .action(() => {
-    const coffinPath = path.join(process.cwd(), "COFFIN.md");
-
-    // Print spooky ASCII art header
-    console.log(TOMBSTONE_ART);
-    console.log(GHOST_ART);
-    console.log(RESURRECT_BANNER);
-
-    // ── Guard: no COFFIN.md found ────────────────────────────────────────────
-    if (!fs.existsSync(coffinPath)) {
-      console.log(chalk.red.bold("🕸️  No spirits found in the graveyard.\n"));
-      console.log(
-        chalk.gray(
-          "The grave is empty. No COFFIN.md was found in this directory.\n"
-        )
-      );
-      console.log(
-        chalk.gray(
-          '💡 Seal your context first: luvsean coffin "what you were doing"\n'
-        )
-      );
-      process.exit(1);
-    }
-
-    // ── Read and render COFFIN.md ────────────────────────────────────────────
-    try {
-      const content = fs.readFileSync(coffinPath, "utf-8");
-      const stats = fs.statSync(coffinPath);
-      const sealedAgo = getTimeAgo(stats.mtime);
-
-      console.log(chalk.magenta(`🪦 Unsealing the coffin... (sealed ${sealedAgo})\n`));
-      console.log(chalk.gray("─".repeat(50)) + "\n");
-
-      renderCoffinContent(content);
-
-      console.log("\n" + chalk.gray("─".repeat(50)));
-      console.log(
-        chalk.green.bold(
-          "\n🌑 You have been resurrected. Now go build something hauntingly great.\n"
-        )
-      );
-    } catch (err) {
-      console.error(chalk.red("💀 Failed to open the coffin:"), err);
-      process.exit(1);
-    }
+  .description("💀 Wake your saved context: summary, next steps, reopen files")
+  .option("-o, --open", "reopen changed files at your last-edit line in your editor")
+  .option("-a, --apply", "restore uncommitted changes from the coffin's stash (clean tree only)")
+  .action(async (o: ResurrectOptions) => {
+    process.exitCode = await runResurrect(o);
   });
-
-// ─── Helper ────────────────────────────────────────────────────────────────────
-
-/**
- * Returns a human-friendly "X ago" string from a Date object.
- */
-function getTimeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}

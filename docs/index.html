@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AETHER — resurrect your context, bury the dead code</title>
+<meta name="description" content="AETHER is a command-line toolkit with seven rituals: freeze and restore your context, exorcise dead dependencies, hunt dead code, translate errors, judge commits and catch config drift. Offline-first, AI-optional.">
+<meta name="theme-color" content="#14102b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M12 58V28a20 20 0 0 1 40 0v30l-8-6-6 6-6-6-6 6-6-6z' fill='%23efe8d8'/%3E%3Ccircle cx='25' cy='28' r='4' fill='%2314102b'/%3E%3Ccircle cx='39' cy='28' r='4' fill='%2314102b'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sky:#14102b; --crypt:#1c1740; --stone:#2b2550; --line:#3a3366;
+  --bone:#efe8d8; --mist:#b0a8d8; --lantern:#f2a93b; --spectre:#7ee0c3; --blood:#e8667a; --ice:#7cc4f5;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;position:relative;background:var(--sky);color:var(--bone);font:400 1.0625rem/1.65 var(--display);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--lantern);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1160px;margin:0 auto;padding:0 clamp(1.1rem,4vw,2rem)}
+.skip{position:absolute;left:-999px}.skip:focus{left:1rem;top:1rem;background:var(--lantern);color:var(--sky);padding:.5rem .8rem;border-radius:6px;z-index:9}
+
+/* header */
+header.top{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.25rem 0}
+.brand{display:flex;align-items:center;gap:.6rem;font-weight:800;font-size:1.25rem;letter-spacing:.02em;text-decoration:none}
+.brand svg{width:28px;height:28px}
+nav.links{display:flex;gap:1.4rem;font-size:.95rem;color:var(--mist)}
+nav.links a{text-decoration:none}nav.links a:hover{color:var(--bone)}
+@media(max-width:640px){nav.links a:not(.gh){display:none}}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);gap:clamp(1.5rem,4vw,3.5rem);align-items:center;padding:clamp(1.5rem,5vw,3.5rem) 0 1.5rem}
+@media(max-width:900px){.hero{grid-template-columns:1fr}}
+h1{font-size:clamp(2.4rem,5.6vw,4.2rem);line-height:1.02;letter-spacing:-.03em;font-weight:800;margin:0 0 1.2rem;font-variation-settings:"opsz" 96}
+.lede{font-size:1.2rem;color:var(--mist);max-width:34rem;margin:0 0 1.8rem}
+.cta{display:flex;flex-wrap:wrap;gap:.8rem;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.75rem 1.25rem;border-radius:10px;font-weight:600;text-decoration:none;border:1px solid var(--line);background:transparent;color:var(--bone);cursor:pointer;font:600 1rem var(--display)}
+.btn.primary{background:var(--lantern);border-color:var(--lantern);color:#2a1a00}
+.btn:hover{border-color:var(--bone)}.btn.primary:hover{background:#ffbd5a}
+.proof{display:flex;flex-wrap:wrap;gap:.5rem 1.4rem;margin:1.8rem 0 0;padding:0;list-style:none;color:var(--mist);font-size:.95rem}
+.proof li::before{content:"";display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:var(--spectre);margin-right:.5rem}
+
+/* terminal */
+.term{background:#0d0a1f;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.8),0 0 0 1px rgba(242,169,59,.06)}
+.tabs{display:flex;gap:.25rem;overflow-x:auto;padding:.55rem .6rem;background:var(--crypt);border-bottom:1px solid var(--line);scrollbar-width:thin}
+.tab{flex:none;font:600 .82rem var(--mono);color:var(--mist);background:transparent;border:1px solid transparent;border-radius:7px;padding:.35rem .65rem;cursor:pointer}
+.tab:hover{color:var(--bone)}
+.tab[aria-selected=true]{color:#2a1a00;background:var(--lantern)}
+.screen{margin:0;padding:1.1rem 1.2rem 1.3rem;min-height:21.5rem;max-height:21.5rem;overflow:auto;font:400 .8rem/1.62 var(--mono);color:#d9d3ee;white-space:pre-wrap;word-break:break-word}
+.screen .p{color:var(--spectre)}
+.g{color:var(--spectre)}.r{color:var(--blood)}.a{color:var(--lantern)}.c{color:var(--ice)}.v{color:#b9a7ff}.d{color:#8b83b8}.b{color:var(--bone);font-weight:600}
+.note{margin:.7rem .2rem 0;font-size:.85rem;color:#9a92c4}
+
+/* graveyard */
+.yard{margin-top:.5rem}
+.yard svg{display:block;width:100%;height:auto}
+.stone{cursor:pointer}
+.stone .body{fill:var(--stone);stroke:var(--line);stroke-width:2;transition:fill .25s,stroke .25s}
+.stone:hover .body{fill:#352e63}
+.stone[aria-selected=true] .body{stroke:var(--lantern);fill:#3a3068}
+.stone[aria-selected=true]{filter:drop-shadow(0 0 10px rgba(242,169,59,.55))}
+#ghost{transition:transform .7s cubic-bezier(.3,.9,.3,1)}
+#ghost .bob{animation:bob 3.4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-7px)}}
+.flit{animation:flit 9s linear infinite}
+@keyframes flit{from{transform:translateX(-80px)}to{transform:translateX(1280px)}}
+.win{animation:flicker 5s steps(1) infinite}
+@keyframes flicker{0%,100%{opacity:1}46%{opacity:.55}48%{opacity:1}}
+@media(prefers-reduced-motion:reduce){#ghost,#ghost .bob,.flit,.win{animation:none;transition:none}html{scroll-behavior:auto}}
+
+/* sections */
+section{padding:clamp(2.5rem,7vw,5rem) 0}
+section.alt{background:var(--crypt);border-block:1px solid var(--line)}
+h2{font-size:clamp(1.7rem,3.4vw,2.4rem);line-height:1.1;letter-spacing:-.02em;margin:0 0 .6rem;font-weight:800}
+.sub{color:var(--mist);max-width:40rem;margin:0 0 2.2rem}
+dl.rituals{margin:0;display:grid;grid-template-columns:minmax(0,13rem) 1fr;gap:0;border-top:1px solid var(--line)}
+dl.rituals dt,dl.rituals dd{margin:0;padding:1.05rem 0;border-bottom:1px solid var(--line)}
+dl.rituals dt{font:600 .95rem var(--mono);color:var(--lantern);padding-right:1rem}
+dl.rituals dt small{display:block;font:400 .8rem var(--display);color:var(--mist);margin-top:.2rem}
+dl.rituals dd b{font-weight:600}
+dl.rituals dd code,.inline{font:400 .85rem var(--mono);background:#0d0a1f;border:1px solid var(--line);border-radius:6px;padding:.1rem .4rem;color:var(--spectre)}
+@media(max-width:700px){dl.rituals{grid-template-columns:1fr}dl.rituals dt{border-bottom:0;padding-bottom:0}dl.rituals dd{padding-top:.3rem}}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:clamp(1.5rem,4vw,3.5rem)}
+@media(max-width:800px){.two{grid-template-columns:1fr}}
+.two h3{font-size:1.2rem;margin:0 0 .5rem}
+.two ul{margin:0;padding-left:1.1rem;color:var(--mist)}.two li{margin:.35rem 0}
+.two li b{color:var(--bone);font-weight:600}
+pre.code{position:relative;margin:0;background:#0d0a1f;border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.2rem;overflow:auto;font:400 .85rem/1.7 var(--mono);color:#d9d3ee}
+pre.code .cm{color:#8b83b8}
+.copy{position:absolute;right:.7rem;top:.7rem;font:600 .75rem var(--mono);padding:.3rem .6rem;border-radius:6px;border:1px solid var(--line);background:var(--crypt);color:var(--mist);cursor:pointer}
+.copy:hover{color:var(--bone)}
+.tree{font:400 .85rem/1.7 var(--mono);color:#d9d3ee;background:#0d0a1f;border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.2rem;margin:0;overflow:auto}
+.tree .d{color:#8b83b8}
+footer{padding:2rem 0 3rem;color:var(--mist);font-size:.92rem;border-top:1px solid var(--line)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:.5rem 2rem;justify-content:space-between;align-items:flex-end}
+
+/* blood */
+.blood{position:absolute;top:0;left:0;right:0;height:190px;z-index:4;pointer-events:none;overflow:hidden}
+.blood svg{width:100%;height:100%;display:block}
+.drip{transform-box:fill-box;transform-origin:50% 0;animation:drip var(--t,5s) cubic-bezier(.4,0,.2,1) var(--d,0s) both}
+@keyframes drip{from{transform:scaleY(.05)}to{transform:scaleY(1)}}
+.drop{animation:fall var(--t2,3.2s) ease-in var(--d2,2s) infinite;opacity:0}
+@keyframes fall{0%{transform:translateY(0);opacity:0}10%{opacity:.95}85%{opacity:.9}100%{transform:translateY(170px);opacity:0}}
+.gore{color:var(--blood);text-shadow:0 0 22px rgba(200,20,50,.55);position:relative;white-space:nowrap}
+.gore::after{content:"";position:absolute;left:6%;right:6%;bottom:-.08em;height:.16em;border-radius:0 0 .2em .2em;background:linear-gradient(#b3122b,#7a0a1c);clip-path:polygon(0 0,100% 0,100% 40%,93% 40%,92% 100%,86% 100%,85% 40%,60% 40%,59% 75%,54% 75%,53% 40%,30% 40%,29% 130%,22% 130%,21% 40%,0 40%)}
+.term.bleed{animation:bleed .9s ease-out}
+@keyframes bleed{0%{box-shadow:0 0 0 2px #e8667a,0 0 60px 8px rgba(190,15,45,.65)}100%{box-shadow:0 30px 80px -30px rgba(0,0,0,.8),0 0 0 1px rgba(242,169,59,.06)}}
+.stone .trickle{fill:none;stroke:#c1122f;stroke-width:4;stroke-linecap:round;stroke-dasharray:60;stroke-dashoffset:60;transition:stroke-dashoffset 1.4s ease-out}
+.stone[aria-selected=true] .trickle{stroke-dashoffset:0}
+.stone[aria-selected=true] .body{stroke:var(--blood)}
+.stone[aria-selected=true]{filter:drop-shadow(0 0 12px rgba(214,30,60,.7))}
+@media(prefers-reduced-motion:reduce){.drip,.drop,.term.bleed{animation:none}}
+</style>
+<link rel="stylesheet" href="halloween.css">
+</head>
+<body data-page="index">
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="wrap">
+  
+
+  <main id="main">
+    <div class="hero" id="top">
+      <div class="hero-copy">
+        <a class="brandline" href="index.html" aria-label="AETHER, the haunted terminal: home"><svg class="logo-mark" viewBox="0 0 34 38" aria-hidden="true"><path d="M2 37V15a15 15 0 0 1 30 0v22z" fill="#1c1740" stroke="#efe8d8" stroke-width="1.6"/><path d="M9 31V18a8 8 0 0 1 16 0v13l-2.7-2.2L20 31l-3-2.2L14 31l-2.7-2.2z" fill="#efe8d8"/><circle cx="14" cy="18" r="1.7" fill="#14102b"/><circle cx="20" cy="18" r="1.7" fill="#14102b"/></svg><b>AETHER</b><span>the haunted terminal</span></a>
+        <h1>Resurrect your context. Bury the <span class="gore">dead code</span>.</h1>
+        <p class="lede">AETHER is a command-line toolkit of seven small rituals. It remembers where you stopped, finds the code and dependencies nobody uses, explains cryptic errors, and keeps your commits and config honest.</p>
+        <nav class="dock" id="dock" aria-label="Primary"><i class="dock-ind" aria-hidden="true"></i><a href="terminal.html">Terminal</a><a href="playground.html">Playground</a><a href="#rituals">Rituals</a><a href="#kiro">Kiro</a><a href="#start">Quick start</a><a data-repo href="index.html#start">GitHub <span aria-hidden="true">↗</span></a></nav>
+        <div class="cta">
+          <a class="btn primary" href="terminal.html">Open the terminal</a>
+          <a class="btn" href="#start">Install the CLI</a>
+        </div>
+        <ul class="proof">
+          <li>Works offline, AI is optional</li>
+          <li>Never touches your working tree</li>
+          <li>Secret values never leave your machine</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="term" role="group" aria-label="Interactive terminal demo">
+          <div class="tabs" role="tablist" aria-label="Rituals" id="tabs"></div>
+          <div id="tty" role="tabpanel" aria-label="Interactive AETHER terminal"></div>
+        </div>
+        <p class="note">A real shell over an in-memory project, running AETHER's actual engines. Click in and type <code class="inline">help</code>, or pick a ritual above. <a href="terminal.html">Open it full screen</a>.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- graveyard: clickable tombstones mirror the terminal tabs -->
+<div class="wrap yard">
+<svg viewBox="0 0 1200 290" role="img" aria-label="A moonlit graveyard with a haunted house, a bare tree, a ghost and eight tombstones, one for each ritual. Select a tombstone to switch the terminal demo.">
+  <defs>
+    <radialGradient id="moon" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff6d8" stop-opacity=".55"/><stop offset="1" stop-color="#fff6d8" stop-opacity="0"/></radialGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1640"/><stop offset="1" stop-color="#0d0a1f"/></linearGradient>
+  </defs>
+  <circle cx="1040" cy="78" r="120" fill="url(#moon)"/><circle cx="1040" cy="78" r="40" fill="#f3ead0"/>
+  <circle cx="1028" cy="68" r="8" fill="#e2d7b4"/><circle cx="1054" cy="92" r="5" fill="#e2d7b4"/>
+  <g fill="#efe8d8" opacity=".7"><circle cx="120" cy="40" r="1.6"/><circle cx="310" cy="70" r="1.2"/><circle cx="520" cy="30" r="1.6"/><circle cx="700" cy="62" r="1.2"/><circle cx="860" cy="28" r="1.6"/><circle cx="640" cy="110" r="1.2"/><circle cx="210" cy="120" r="1.2"/></g>
+  <!-- bat -->
+  <g class="flit" fill="#0d0a1f"><path d="M0 60c8-9 14-4 18 2 4-6 10-11 18-2-6-1-10 2-18 8-8-6-12-9-18-8z"/></g>
+  <!-- haunted house -->
+  <g fill="#0f0b24"><path d="M40 250V160l34-22 34 22v90zM108 250V128l22-30 22 30v122zM152 250V176l40-26 40 26v74z"/><path d="M118 98h24v-22h-6v14h-12z"/></g>
+  <g fill="#f2a93b" class="win"><rect x="62" y="176" width="12" height="18" rx="2"/><rect x="124" y="140" width="12" height="18" rx="2"/><rect x="180" y="192" width="12" height="18" rx="2"/></g>
+  <!-- tree -->
+  <path d="M330 250c4-40 2-70-8-96m4 54c-16-14-26-18-40-20m46-16c14-16 26-24 40-26m-36 62c20-8 30-8 46-4" fill="none" stroke="#0f0b24" stroke-width="7" stroke-linecap="round"/>
+  <!-- ground -->
+  <path d="M0 262c140-24 300-16 460-8s330 14 480 0 190-10 260-6v42H0z" fill="url(#hill)"/>
+  <!-- stones -->
+  <g id="stones"></g>
+  <!-- ghost -->
+  <g id="ghost" transform="translate(120 130)"><g class="bob"><image href="assets/casper.webp" x="-36" y="-37" width="72" height="77"/></g></g>
+</svg>
+</div>
+
+<div class="wrap">
+  <section id="rituals" class="split" aria-labelledby="h-rituals">
+    <aside class="tree-scene" aria-hidden="true"><div class="branch-wrap"><img class="branch2" src="assets/branch.webp" alt=""></div><img class="totem" src="assets/pumpkins.webp" alt=""></aside>
+    <div class="rituals-body">
+    <h2 id="h-rituals">Seven rituals, one rule: never destroy your work</h2>
+    <p class="sub">Each ritual solves one chore developers keep postponing. Type your intent in plain English, or call a ritual by name.</p>
+    <dl class="rituals">
+      <dt>coffin<small>and resurrect</small></dt>
+      <dd><b>Pick up exactly where you stopped.</b> Saves your branch, the file and line you last edited, a git stash snapshot and an AI summary. <code>aether resurrect --open</code> reopens the files at those lines.</dd>
+      <dt>sweep<small>DeadCode Hunter</small></dt>
+      <dd><b>Finds functions nobody calls.</b> Indexes every reference in the project, then reports <code>calculateTax()</code> at line 45 with a confidence level. Also lists files nothing imports.</dd>
+      <dt>exorcise<small>Zombie Dependency Exorcist</small></dt>
+      <dd><b>Finds dead dependencies and rewrites the code that uses them.</b> Reads <code>package.json</code> and <code>requirements.txt</code>, shows every import site, and with <code>--rewrite</code> the AI proposes the migration plus a test.</dd>
+      <dt>whisper<small>Error Message Translator</small></dt>
+      <dd><b>Turns cryptic errors into a cause and a fix.</b> Understands 25+ PHP, JavaScript, Python, git and npm errors offline. Pipe any failing command into it.</dd>
+      <dt>oath<small>Cursed Commit Hook</small></dt>
+      <dd><b>Blocks "fix bug" and offers three better messages.</b> Installs as a real git hook. Judges meaning, not keywords, so <code>fix: resolve null pointer in AuthController</code> passes.</dd>
+      <dt>drift<small>Config Drift Detector</small></dt>
+      <dd><b>Keeps every environment in agreement.</b> Compares all <code>.env</code> files and the variables your code reads, and generates a <code>.env.example</code> with secret values always blanked.</dd>
+      <dt>ask<small>natural language</small></dt>
+      <dd><b>Say what you want.</b> <code>aether "save my work, I was fixing the reset token"</code> picks the right ritual, with or without an AI key.</dd>
+    </dl>
+    </div>
+  </section>
+</div>
+
+<section class="alt" id="offline" aria-labelledby="h-off"><div class="wrap">
+  <h2 id="h-off">Works offline. Better with AI.</h2>
+  <p class="sub">Every ritual has a deterministic local engine. The AI layer (Nebius, any OpenAI-compatible model) only improves the answer, and any failure falls back to the local result.</p>
+  <div class="two">
+    <div><h3>Without a key</h3><ul>
+      <li><b>coffin</b> writes a summary from your changed files and edit lines</li>
+      <li><b>sweep, exorcise, drift</b> are fully local static analysis</li>
+      <li><b>whisper</b> and <b>oath</b> use a built-in grimoire and diff-aware suggestions</li>
+      <li><b>ask</b> routes with a weighted keyword router</li></ul></div>
+    <div><h3>With a key</h3><ul>
+      <li><b>coffin</b> explains what you were trying to do and where you stopped</li>
+      <li><b>exorcise --rewrite</b> migrates code off dead packages and drafts tests</li>
+      <li><b>sweep --ai</b> double-checks for dynamic or framework usage</li>
+      <li><b>drift --ai</b> documents each variable, sending key names only</li></ul></div>
+  </div>
+</div></section>
+
+<div class="wrap">
+  <section id="kiro" aria-labelledby="h-kiro">
+    <h2 id="h-kiro">Built with Kiro</h2>
+    <p class="sub">The project is specified, steered and guarded through Kiro's own workflow. The files below live in the repository.</p>
+    <div class="two">
+<pre class="tree"><span class="d">.kiro/</span>
+├─ steering/
+│  ├─ product.md      <span class="d">what each ritual promises</span>
+│  ├─ tech.md         <span class="d">no shell strings, AI must fall back</span>
+│  ├─ ritual-style.md <span class="d">output and exit-code conventions</span>
+│  └─ session.md      <span class="d">resurrect on start, coffin on stop</span>
+├─ specs/aether-cli/
+│  ├─ requirements.md <span class="d">EARS acceptance criteria</span>
+│  ├─ design.md
+│  └─ tasks.md
+├─ settings/
+│  └─ mcp.json        <span class="d">AETHER as an MCP server for Kiro</span>
+└─ hooks/
+   ├─ build-on-save.kiro.hook
+   └─ seal-coffin.kiro.hook</pre>
+      <div><h3>Where it fits</h3><ul>
+        <li><b>Resurrection:</b> coffin and exorcise bring dead context and dead code back to life</li>
+        <li><b>Frankenstein:</b> seven tools, git, static analysis and an LLM stitched into one CLI</li>
+        <li><b>Safe by design:</b> no shell injection, non-destructive snapshots, guarded rewrites, honest confidence levels</li>
+        <li><b>MCP:</b> <code>aether mcp</code> exposes seven tools, so Kiro itself can freeze and restore its own session</li>
+        <li><b>Property-based tests:</b> fast-check hammers the engines with random input and already caught a real bug</li>
+        <li><b>Tested:</b> twelve end-to-end tests plus seven properties</li></ul></div>
+    </div>
+  </section>
+
+  <section id="start" aria-labelledby="h-start">
+    <div class="start-grid"><div class="start-main">
+    <h2 id="h-start">Quick start</h2>
+    <p class="sub">Needs Node 18 or newer. No API key required to try every ritual.</p>
+<pre class="code" id="install"><button class="copy" type="button" data-copy="install">Copy</button><span class="cm"># install</span>
+git clone https://github.com/YOUR-USERNAME/AETHER.git && cd AETHER
+npm install && npm run build && npm link
+
+<span class="cm"># optional: enable the AI layer</span>
+cp .env.example .env   <span class="cm"># then add NEBIUS_API_KEY</span>
+
+<span class="cm"># try it</span>
+aether "save my work, I was fixing the reset token"
+aether resurrect --open
+aether sweep && aether drift && aether exorcise
+aether oath --install-hook</pre>
+    </div>
+    <div class="balloon-stage" aria-hidden="true"><img class="balloon" src="assets/balloons.webp" alt="" title="Pop me"></div>
+    </div>
+  </section>
+</div>
+
+<footer><div class="wrap">
+  <span>AETHER · MIT license · built for Kiroween 2026<br><a href="#top">Back to top</a></span>
+  <a href="https://kiroween.devpost.com/" target="_blank" rel="noopener" aria-label="Kiroween 2026 on Devpost"><img class="sign" src="assets/sign.webp" alt="A Halloween party signpost with a spider on its web"></a>
+</div></footer>
+
+<script src="engine.js"></script>
+<script src="terminal.js"></script>
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/ScrollTrigger.min.js"></script>
+<script src="halloween.js"></script>
+<script>
+(function(){
+  AetherStage.mount({ moon: true, cracks: true, bats: true, haunt: true, spider: true });
+  // Set your repository URL once; every GitHub link on the page uses it.
+  var REPO = "https://github.com/YOUR-USERNAME/AETHER";
+  var rl = document.getElementById("repo-link");
+  if (REPO.indexOf("YOUR-USERNAME") === -1) { [].forEach.call(document.querySelectorAll("[data-repo]"), function(a){ a.href = REPO; a.target = "_blank"; a.rel = "noopener"; }); }
+
+  var names = ["ask","coffin","resurrect","sweep","exorcise","whisper","oath","drift"];
+  var heights = [62,74,58,80,66,72,60,70];
+  var tabs = document.getElementById("tabs");
+  var stonesG = document.getElementById("stones"), ghost = document.getElementById("ghost");
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var NS = "http://www.w3.org/2000/svg", current = -1;
+
+  // The terminal is real: tabs type scripted commands into it, and you can type your own.
+  var term = AetherTerm.mount(document.getElementById("tty"), { onReject: function(){ flash(); if (current >= 0) splatter(current); } });
+  function play(i){ AetherTerm.play(term, names[i]); }
+
+  // ── blood: dripping top edge ──
+  
+
+  // ── blood: splatter when a stone is chosen ──
+  var yardSvg = document.querySelector(".yard svg");
+  function splatter(i){
+    if (reduce) return;
+    var cx = 90 + i * 140, cy = 252 - heights[i] + 14;
+    for (var k = 0; k < 18; k++) {
+      var c = document.createElementNS(NS, "circle"), a = Math.random() * Math.PI * 2, dist = 30 + Math.random() * 90, r = 1.5 + Math.random() * 4.5;
+      c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", r); c.setAttribute("fill", Math.random() > .3 ? "#c1122f" : "#8f0e22");
+      yardSvg.appendChild(c);
+      if (!c.animate) { c.remove(); continue; }
+      var an = c.animate([
+        { transform: "translate(0,0)", opacity: 1 },
+        { transform: "translate(" + Math.cos(a) * dist + "px," + (Math.sin(a) * dist * .7 - 20) + "px)", opacity: 1, offset: .55 },
+        { transform: "translate(" + Math.cos(a) * dist * 1.1 + "px," + (Math.sin(a) * dist * .7 + 70) + "px)", opacity: 0 }
+      ], { duration: 900 + Math.random() * 500, easing: "cubic-bezier(.2,.7,.4,1)" });
+      an.onfinish = (function(el){ return function(){ el.remove(); }; })(c);
+    }
+  }
+  function flash(){
+    var t = document.querySelector(".term"); t.classList.remove("bleed"); void t.offsetWidth; if (!reduce) t.classList.add("bleed"); AetherStage.slash(t);
+  }
+  function select(i, focus){
+    if (i === current) return; current = i;
+    [].forEach.call(tabs.children, function(t, k){ t.setAttribute("aria-selected", k === i); t.tabIndex = k === i ? 0 : -1; });
+    [].forEach.call(stonesG.children, function(s, k){ s.setAttribute("aria-selected", k === i); });
+    ghost.style.transform = "translate(" + (90 + i*140) + "px," + (250 - heights[i] - 62) + "px)";
+    if (focus) tabs.children[i].focus();
+    if (started) { splatter(i); flash(); }
+    play(i);
+  }
+
+  names.forEach(function(n, i){
+    var b = document.createElement("button");
+    b.className = "tab"; b.type = "button"; b.role = "tab"; b.textContent = n; b.id = "tab-" + n;
+    b.addEventListener("click", function(){ select(i); });
+    b.addEventListener("keydown", function(e){
+      if (e.key === "ArrowRight") { e.preventDefault(); select((i+1) % names.length, true); }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); select((i+names.length-1) % names.length, true); }
+    });
+    tabs.appendChild(b);
+
+    var h = heights[i], x = 90 + i*140;
+    var g = document.createElementNS(NS, "g");
+    g.setAttribute("class", "stone"); g.setAttribute("transform", "translate(" + x + " 252)");
+    g.setAttribute("tabindex", "0"); g.setAttribute("role", "button"); g.setAttribute("aria-label", "Show the " + n + " ritual");
+    g.innerHTML = '<path class="body" d="M-30 0V-' + (h-30) + 'a30 30 0 0 1 60 0V0z"/>' +
+      '<path d="M0 -' + (h-14) + 'v22M-8 -' + (h-22) + 'h16" stroke="#8b83b8" stroke-width="2.5" stroke-linecap="round" fill="none" opacity=".7"/>' +
+      '<rect x="-38" y="-4" width="76" height="8" rx="3" fill="#0d0a1f" opacity=".6"/>' +
+      '<path class="trickle" d="M-12 -' + (h-6) + 'q3 14 -1 26t2 22"/>';
+    g.addEventListener("click", function(){ select(i); });
+    g.addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(i); } });
+    stonesG.appendChild(g);
+  });
+
+  var started = false;
+  select(2);
+  started = true;
+  if (!reduce) setTimeout(function(){ AetherStage.slash(document.querySelector(".term")); }, 1100);
+
+  // copy button
+  document.querySelectorAll(".copy").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var pre = document.getElementById(btn.dataset.copy);
+      var text = pre.innerText.replace(/^Copy\s*/, "");
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function(){ btn.textContent = "Copied"; }, function(){ btn.textContent = "Select and copy"; });
+      setTimeout(function(){ btn.textContent = "Copy"; }, 1800);
+    });
+  });
+})();
+</script>
+<script src="motion.js"></script>
+</body>
+</html>

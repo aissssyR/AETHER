@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The séance room — run AETHER in your browser</title>
+<meta name="description" content="Paste an error, a commit message, your .env files or your code. AETHER's real engines run entirely in your browser — nothing is uploaded.">
+<meta name="theme-color" content="#14102b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M12 58V28a20 20 0 0 1 40 0v30l-8-6-6 6-6-6-6 6-6-6z' fill='%23efe8d8'/%3E%3Ccircle cx='25' cy='28' r='4' fill='%2314102b'/%3E%3Ccircle cx='39' cy='28' r='4' fill='%2314102b'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--sky:#14102b;--crypt:#1c1740;--line:#3a3366;--bone:#efe8d8;--mist:#b0a8d8;--lantern:#f2a93b;--spectre:#7ee0c3;--blood:#e8667a;--ice:#7cc4f5;
+ --display:"Bricolage Grotesque",ui-sans-serif,system-ui,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;position:relative;background:var(--sky);color:var(--bone);font:400 1.0625rem/1.6 var(--display);-webkit-font-smoothing:antialiased;min-height:100vh}
+a{color:inherit}:focus-visible{outline:2px solid var(--lantern);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1160px;margin:0 auto;padding:0 clamp(1.1rem,4vw,2rem)}
+.blood{position:absolute;top:0;left:0;right:0;height:170px;z-index:4;pointer-events:none;overflow:hidden}.blood svg{width:100%;height:100%;display:block}
+.drip{transform-box:fill-box;transform-origin:50% 0;animation:drip var(--t,5s) cubic-bezier(.4,0,.2,1) var(--d,0s) both}
+@keyframes drip{from{transform:scaleY(.05)}to{transform:scaleY(1)}}
+.drop{animation:fall var(--t2,3.2s) ease-in var(--d2,2s) infinite;opacity:0}
+@keyframes fall{0%{transform:translateY(0);opacity:0}10%{opacity:.95}85%{opacity:.9}100%{transform:translateY(150px);opacity:0}}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.25rem 0;position:relative;z-index:5}
+.brand{display:flex;align-items:center;gap:.6rem;font-weight:800;font-size:1.25rem;letter-spacing:.02em;text-decoration:none}.brand svg{width:28px;height:28px}
+nav{display:flex;gap:1.4rem;font-size:.95rem;color:var(--mist)}nav a{text-decoration:none}nav a:hover{color:var(--bone)}
+h1{font-size:clamp(2rem,4.6vw,3.3rem);line-height:1.04;letter-spacing:-.03em;font-weight:800;margin:2.2rem 0 .8rem}
+h1 .gore{color:var(--blood);text-shadow:0 0 22px rgba(200,20,50,.55)}
+.lede{color:var(--mist);max-width:42rem;margin:0 0 1.6rem;font-size:1.12rem}
+.priv{display:inline-flex;gap:.5rem;align-items:center;font-size:.9rem;color:var(--spectre);border:1px solid rgba(126,224,195,.35);border-radius:999px;padding:.25rem .8rem;margin-bottom:1.4rem}
+.altars{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem}
+.altar{font:600 .9rem var(--mono);color:var(--mist);background:var(--crypt);border:1px solid var(--line);border-radius:9px;padding:.55rem .9rem;cursor:pointer}
+.altar small{display:block;font:400 .72rem var(--display);opacity:.85}
+.altar:hover{color:var(--bone)}.altar[aria-selected=true]{background:var(--lantern);border-color:var(--lantern);color:#2a1a00}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem;padding-bottom:3rem}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+.panel{background:#0d0a1f;border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.panel h2{margin:0;font:600 .8rem var(--mono);color:var(--mist);background:var(--crypt);border-bottom:1px solid var(--line);padding:.6rem .9rem;display:flex;justify-content:space-between;gap:1rem}
+label{display:block;font:600 .75rem var(--mono);color:var(--mist);margin:.9rem .9rem .3rem}
+textarea,input[type=text]{width:calc(100% - 1.8rem);margin:0 .9rem .5rem;background:#120e29;color:#e6e0f7;border:1px solid var(--line);border-radius:8px;padding:.6rem .7rem;font:400 .82rem/1.55 var(--mono);resize:vertical}
+textarea{min-height:7rem}textarea.tall{min-height:15rem}
+textarea:focus,input:focus{outline:2px solid var(--lantern);outline-offset:1px}
+.out{margin:0;padding:1rem 1.1rem 1.2rem;min-height:20rem;font:400 .82rem/1.65 var(--mono);color:#d9d3ee;white-space:pre-wrap;word-break:break-word;overflow:auto;flex:1}
+.g{color:var(--spectre)}.r{color:var(--blood)}.a{color:var(--lantern)}.c{color:var(--ice)}.v{color:#b9a7ff}.d{color:#8b83b8}.b{color:var(--bone);font-weight:600}
+.btn{margin:.4rem .9rem .9rem;align-self:flex-start;font:600 .9rem var(--display);padding:.55rem 1rem;border-radius:9px;border:1px solid var(--lantern);background:var(--lantern);color:#2a1a00;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--bone);border-color:var(--line)}
+.panel.bleed{animation:bleed .9s ease-out}
+@keyframes bleed{0%{box-shadow:0 0 0 2px #e8667a,0 0 60px 8px rgba(190,15,45,.65)}100%{box-shadow:none}}
+.hint{font-size:.82rem;color:#9a92c4;margin:.2rem .9rem .8rem}
+footer{border-top:1px solid var(--line);padding:1.6rem 0 2.4rem;color:var(--mist);font-size:.92rem}
+.skip{position:absolute;left:-999px}.skip:focus{left:1rem;top:1rem;background:var(--lantern);color:var(--sky);padding:.5rem .8rem;border-radius:6px;z-index:9}
+@media(prefers-reduced-motion:reduce){.drip,.drop,.panel.bleed{animation:none}}
+</style>
+<link rel="stylesheet" href="halloween.css">
+</head>
+<body data-page="playground">
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="wrap">
+  
+
+  <main id="main">
+    <a class="brandline" href="index.html" aria-label="AETHER, the haunted terminal: home"><svg class="logo-mark" viewBox="0 0 34 38" aria-hidden="true"><path d="M2 37V15a15 15 0 0 1 30 0v22z" fill="#1c1740" stroke="#efe8d8" stroke-width="1.6"/><path d="M9 31V18a8 8 0 0 1 16 0v13l-2.7-2.2L20 31l-3-2.2L14 31l-2.7-2.2z" fill="#efe8d8"/><circle cx="14" cy="18" r="1.7" fill="#14102b"/><circle cx="20" cy="18" r="1.7" fill="#14102b"/></svg><b>AETHER</b><span>the haunted terminal</span></a>
+    <h1>The <span class="gore">séance</span> room</h1>
+    <p class="lede">Paste something real. AETHER's actual engines — the same code as the CLI and the Kiro MCP server — run on it right here and answer in plain language.</p>
+    <nav class="dock" id="dock" aria-label="Primary"><i class="dock-ind" aria-hidden="true"></i><a href="index.html">Home</a><a href="terminal.html">Terminal</a><a href="playground.html" aria-current="page">Playground</a><a href="index.html#rituals">Rituals</a><a href="index.html#kiro">Kiro</a><a href="index.html#start">Quick start</a><a data-repo href="index.html#start">GitHub <span aria-hidden="true">↗</span></a></nav>
+    <p class="priv"><span aria-hidden="true">🔒</span> Runs entirely in your browser. Nothing is uploaded.</p>
+
+    <div class="altars" role="tablist" aria-label="Rituals" id="altars"></div>
+    <div class="grid">
+      <section class="panel" aria-label="Input"><h2><span id="in-title"></span><span>input</span></h2><div id="inputs"></div></section>
+      <section class="panel" id="outpanel" aria-label="Output"><h2><span id="out-title"></span><span>live</span></h2><pre class="out" id="out" aria-live="polite"></pre></section>
+    </div>
+  </main>
+</div>
+<footer><div class="wrap">AETHER · MIT license · engines bundled from <code>src/core</code> · <a href="index.html">Back to the graveyard</a></div></footer>
+
+<script src="engine.js"></script>
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/ScrollTrigger.min.js"></script>
+<script src="halloween.js"></script>
+<script>
+(function(){
+  AetherStage.mount({ cracks: true, bats: true, haunt: true, spider: true, peek: true });
+  var C = window.AetherCore, reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var REPO = "https://github.com/YOUR-USERNAME/AETHER", rl = document.getElementById("repo-link");
+  if (REPO.indexOf("YOUR-USERNAME") === -1) { [].forEach.call(document.querySelectorAll("[data-repo]"), function(a){ a.href = REPO; a.target = "_blank"; a.rel = "noopener"; }); }
+
+  // blood
+  
+
+  var esc = function(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); };
+  var span = function(c, t){ return '<span class="' + c + '">' + esc(t) + "</span>"; };
+  var $ = function(id){ return document.getElementById(id); };
+  var panel = $("outpanel"), out = $("out");
+  function bleed(){ panel.classList.remove("bleed"); void panel.offsetWidth; if (!reduce) panel.classList.add("bleed"); AetherStage.slash(panel); }
+
+  // ───────────── altars ─────────────
+  var SAMPLE_SWEEP = "// ---- src/tax.ts ----\nexport function calculateTax(amount: number) { return amount * 0.11; }\nexport function formatPrice(n: number) { return `Rp ${n}`; }\nfunction legacyDiscount(x: number) { return x * 0.9; }\n\n// ---- src/index.ts ----\nimport { formatPrice } from \"./tax\";\nconsole.log(formatPrice(42));\n\n// ---- src/orphan.ts ----\nexport const nobodyImportsMe = 1;\n";
+  var ALTARS = [
+    { id: "whisper", name: "whisper", sub: "error translator", title: "paste an error",
+      render: function(box){ box.innerHTML = '<label for="w">Error message or stack trace</label><textarea id="w" class="tall" spellcheck="false">Call to undefined method App\\Models\\User::getAttributes()</textarea><p class="hint">Try: <a href="#" data-s="TypeError: Cannot read properties of undefined (reading \'map\')">TypeError</a> · <a href="#" data-s="Error: listen EADDRINUSE: address already in use :::3000">EADDRINUSE</a> · <a href="#" data-s="ModuleNotFoundError: No module named \'requests\'">Python</a> · <a href="#" data-s="npm ERR! code ERESOLVE">npm</a></p>'; },
+      run: function(){ var t = $("w").value.trim(); if (!t) return span("d", "Paste an error on the left."); var r = C.localWhisper(t);
+        if (!r) return span("a", "▲ This curse isn't in the grimoire yet.\n") + span("d", "The CLI can send it to an AI model for translation when NEBIUS_API_KEY is set.");
+        return span("c", "👂 ERROR TRANSLATOR\n\n") + span("b", "What happened\n") + esc(r.cause) + "\n\n" + span("g", "How to fix it\n") + esc(r.fix); } },
+    { id: "oath", name: "oath", sub: "commit judge", title: "write a commit message",
+      render: function(box){ box.innerHTML = '<label for="m">Commit message</label><input type="text" id="m" value="fix bug" autocomplete="off" spellcheck="false"><label for="f">Changed files (one per line, optional)</label><textarea id="f" spellcheck="false">src/auth/UserController.php\nsrc/auth/ResetToken.php</textarea><p class="hint">Try: <a href="#" data-s="fix: resolve null pointer in AuthController when session expires">a good one</a> · <a href="#" data-s="wip">wip</a> · <a href="#" data-s="update">update</a></p>'; },
+      run: function(){ var m = $("m").value; var v = C.validateCommit(m); var files = $("f").value.split("\n").map(function(s){ return s.trim(); }).filter(Boolean).map(function(f){ return { file: f, status: "M" }; });
+        if (v.passed) return span("g", "✔ The spirits accept your oath.\n\n") + esc('"' + m + '"');
+        var s = C.suggestFromFiles(m, files);
+        return span("r", "👻 The Code Spirits are displeased.\n") + span("r", '   "' + m + '" is not an acceptable sacrifice.\n') + span("d", "   Reason: " + v.reason + "\n\n") + span("v", "The spirits offer these instead:\n\n") + s.map(function(x, i){ return span("v", "[" + (i + 1) + "] ") + esc(x); }).join("\n"); },
+      bleedWhen: function(){ return !C.validateCommit($("m").value).passed; } },
+    { id: "drift", name: "drift", sub: "config drift", title: "paste your .env files",
+      render: function(box){ box.innerHTML = '<label for="e1">.env.example</label><textarea id="e1" spellcheck="false">APP_KEY=\nPORT=3000</textarea><label for="e2">.env.production</label><textarea id="e2" spellcheck="false">APP_KEY=base64:Zm9vYmFyYmF6\nPORT=3000\nSTRIPE_SECRET=sk_live_abcdefghijklmnop</textarea><label for="e3">.env.local</label><textarea id="e3" spellcheck="false">APP_KEY=local\nDB_URL=postgres://localhost/dev</textarea><button class="btn" id="gen" type="button">Generate a safe .env.example</button>'; },
+      run: function(){ var files = [[".env.example", $("e1").value], [".env.production", $("e2").value], [".env.local", $("e3").value]].map(function(p){ return { name: p[0], keys: C.parseEnv(p[1]) }; });
+        var ex = files[0], r = C.analyzeDrift(files, ex, new Map()), keys = Array.from(r.union).sort(), w = Math.max(14, Math.max.apply(null, keys.concat(["VARIABLE"]).map(function(k){ return k.length; })) + 2);
+        function pad(s, n){ while (s.length < n) s += " "; return s; }
+        function cell(has){ return (has ? span("g", "●") : span("r", "○")) + "           "; }
+        var h = span("c", "📊 CONFIG DRIFT DETECTOR\n\n") + span("d", pad("VARIABLE", w) + pad("example", 12) + pad("production", 12) + "local\n");
+        keys.forEach(function(k){ h += pad(k, w) + cell(files[0].keys.has(k)) + cell(files[1].keys.has(k)) + cell(files[2].keys.has(k)) + "\n"; });
+        h += "\n"; if (!r.unique.length) h += span("g", "✔ No drift. Every environment agrees.");
+        r.unique.forEach(function(i){ h += span(i.level === "error" ? "r" : "a", (i.level === "error" ? "✖ " : "▲ ") + i.msg + "\n"); });
+        h += "\n" + span("d", "Values are never shown. Secret-looking values are flagged.");
+        return h; },
+      after: function(){ $("gen").onclick = function(){ var ex = C.parseEnv($("e1").value), all = [$("e2").value, $("e3").value].map(C.parseEnv), known = new Map(), missing = [];
+          all.forEach(function(m){ m.forEach(function(v, k){ if (!known.has(k) || (!known.get(k) && v)) known.set(k, v); if (!ex.has(k) && missing.indexOf(k) < 0) missing.push(k); }); });
+          $("e1").value = C.buildExample($("e1").value.trim() ? $("e1").value : null, missing.sort(), known); update(); }; } },
+    { id: "sweep", name: "sweep", sub: "dead code hunter", title: "paste your code",
+      render: function(box){ box.innerHTML = '<label for="c">Files — separate with a line like <code>// ---- path/to/file.ts ----</code></label><textarea id="c" class="tall" spellcheck="false">' + esc(SAMPLE_SWEEP) + '</textarea><p class="hint">JavaScript, TypeScript, Python and PHP. Every reference is traced across all pasted files.</p>'; },
+      run: function(){ var files = [], cur = null; $("c").value.split("\n").forEach(function(l){ var m = l.match(/^\s*(?:\/\/|#)\s*-{2,}\s*(\S+?)\s*-{2,}\s*$/); if (m) { cur = { rel: m[1], ext: (m[1].match(/\.[A-Za-z]+$/) || [""])[0].toLowerCase(), text: "" }; files.push(cur); } else if (cur) cur.text += l + "\n"; });
+        if (!files.length) return span("a", "▲ Add at least one file header, e.g. // ---- src/a.ts ----");
+        var r = C.analyzeFiles(files, null, { orphans: true }), h = span("a", "🧹 DEADCODE HUNTER\n") + span("d", "Scanned " + r.scanned + " files · tracing references across everything you pasted\n\n");
+        if (!r.items.length) return h + span("g", "✔ The graveyard is empty.");
+        var last = ""; r.items.forEach(function(i){ if (i.file !== last) { h += span("c", i.file + "\n"); last = i.file; }
+          h += "  " + span(i.confidence === "high" ? "r" : "a", "[" + i.confidence + "]") + span("d", " L" + i.line + "  ") + (i.kind === "file" ? "orphan file" : i.kind + " " + i.name + "()") + "\n" + span("d", "      " + i.why + "\n"); });
+        var hi = r.items.filter(function(i){ return i.confidence === "high"; }).length;
+        return h + "\n" + hi + " high-confidence · " + (r.items.length - hi) + " medium-confidence candidates"; } }
+  ];
+
+  var tabs = $("altars"), inputs = $("inputs"), current = null;
+  function update(){ var a = current; out.innerHTML = a.run(); if (a.bleedWhen && a.bleedWhen()) bleed(); }
+  function select(i){ current = ALTARS[i];
+    [].forEach.call(tabs.children, function(t, k){ t.setAttribute("aria-selected", k === i); t.tabIndex = k === i ? 0 : -1; });
+    $("in-title").textContent = current.title; $("out-title").textContent = "aether " + current.name;
+    current.render(inputs); if (current.after) current.after();
+    [].forEach.call(inputs.querySelectorAll("textarea,input"), function(el){ el.addEventListener("input", update); });
+    [].forEach.call(inputs.querySelectorAll("a[data-s]"), function(a){ a.addEventListener("click", function(e){ e.preventDefault(); var t = inputs.querySelector("textarea.tall,input[type=text]"); t.value = a.getAttribute("data-s"); update(); }); });
+    update(); }
+  ALTARS.forEach(function(a, i){ var b = document.createElement("button"); b.className = "altar"; b.type = "button"; b.role = "tab"; b.innerHTML = a.name + "<small>" + a.sub + "</small>"; b.addEventListener("click", function(){ select(i); });
+    b.addEventListener("keydown", function(e){ if (e.key === "ArrowRight") { e.preventDefault(); select((i + 1) % ALTARS.length); tabs.children[(i + 1) % ALTARS.length].focus(); } if (e.key === "ArrowLeft") { e.preventDefault(); var p = (i + ALTARS.length - 1) % ALTARS.length; select(p); tabs.children[p].focus(); } });
+    tabs.appendChild(b); });
+  select(0);
+})();
+</script>
+<script src="motion.js"></script>
+</body>
+</html>
